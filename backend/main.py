@@ -1,83 +1,77 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
-import os
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+import time
 
-from db import get_supabase_client
-from schemas import HealthResponse, UserResponse, ItemResponse, ItemCreate
+from core.config import get_settings
+from core.logging import logger
+from models.ai_model_loader import model_loader
+
+from routers import health, items, ml
 
 load_dotenv()
 
+settings = get_settings()
+
 app = FastAPI(
-    title="Backend API",
-    description="FastAPI backend with Supabase integration",
-    version="1.0.0"
+    title="Voice Deepfake Detection API",
+    description="AI-powered voice authentication and deepfake detection system",
+    version=settings.api_version
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins if settings.environment == "production" else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/", response_model=HealthResponse)
-async def health_check():
-    return {
-        "status": "healthy",
-        "message": "Backend is running"
-    }
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+
+    logger.info(f"Request: {request.method} {request.url.path}")
+
+    response = await call_next(request)
+
+    process_time = time.time() - start_time
+    logger.info(f"Response: {response.status_code} - Duration: {process_time:.2f}s")
+
+    return response
 
 
-@app.get("/api/items", response_model=List[ItemResponse])
-async def get_items():
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception handler: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting Voice Deepfake Detection API...")
+    logger.info(f"Environment: {settings.environment}")
+
     try:
-        supabase = get_supabase_client()
-        response = supabase.table("items").select("*").execute()
-        return response.data
+        model_loader.load_model(settings.model_path)
+        logger.info("AI model loaded successfully")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error loading AI model: {e}")
 
 
-@app.post("/api/items", response_model=ItemResponse)
-async def create_item(item: ItemCreate):
-    try:
-        supabase = get_supabase_client()
-        response = supabase.table("items").insert({
-            "title": item.title,
-            "description": item.description,
-            "user_id": "anonymous"
-        }).execute()
-        return response.data[0]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down Voice Deepfake Detection API...")
 
 
-@app.get("/api/items/{item_id}", response_model=ItemResponse)
-async def get_item(item_id: str):
-    try:
-        supabase = get_supabase_client()
-        response = supabase.table("items").select("*").eq("id", item_id).execute()
-        if not response.data:
-            raise HTTPException(status_code=404, detail="Item not found")
-        return response.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/items/{item_id}")
-async def delete_item(item_id: str):
-    try:
-        supabase = get_supabase_client()
-        supabase.table("items").delete().eq("id", item_id).execute()
-        return {"message": "Item deleted successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+app.include_router(health.router)
+app.include_router(items.router)
+app.include_router(ml.router)
 
 
 if __name__ == "__main__":

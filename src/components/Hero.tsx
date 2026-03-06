@@ -71,7 +71,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-xl md:text-2xl text-gray-300 mb-12 max-w-3xl mx-auto"
         >
-          Detecting Spliced Voice Attacks in Real-Time
+          AI-Powered Voice Deepfake Detection in Real-Time
         </motion.p>
 
         <motion.button

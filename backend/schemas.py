@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 
@@ -41,3 +41,32 @@ class ItemResponse(ItemBase):
 class HealthResponse(BaseModel):
     status: str
     message: str
+
+
+class PredictionResponse(BaseModel):
+    prediction: str
+    confidence: float
+    audio_duration: float
+    file_size: int
+    filename: str
+
+
+class PredictionHistoryResponse(BaseModel):
+    id: str
+    audio_filename: str
+    prediction: str
+    confidence: float
+    audio_duration: float
+    file_size: int
+    created_at: datetime
+    metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PredictionStatsResponse(BaseModel):
+    total_predictions: int
+    genuine_count: int
+    fake_count: int
+    average_confidence: float
